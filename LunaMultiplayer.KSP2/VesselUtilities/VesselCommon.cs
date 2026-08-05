@@ -1,5 +1,6 @@
 using KSP.Game;
 using KSP.Sim;
+using KSP.Sim.ResourceSystem;
 using KSP.Sim.impl;
 using System;
 using System.Collections.Generic;
@@ -96,6 +97,84 @@ namespace LunaMultiplayer.KSP2.VesselUtilities
             // (inclination, eccentricity, semiMajorAxis, LAN, argumentOfPeriapsis, meanAnomalyAtEpoch, epoch, referenceBody)
             return new KeplerOrbitState(
                 d.Orbit[0], d.Orbit[1], d.Orbit[2], d.Orbit[3], d.Orbit[4], d.Orbit[5], d.Orbit[6], body);
+        }
+
+        // ───────────────────────── 资源同步辅助 ─────────────────────────
+
+        /// <summary>全局资源定义库（名称↔ID 互查）。VERIFY: 实际访问器可能挂在
+        /// Game.Instance.ResourceDefinitionDatabase 或 SpaceSimulation 上。</summary>
+        public static ResourceDefinitionDatabase ResourceDatabase
+        {
+            get
+            {
+                var game = Game.Instance;
+                if (game == null) return null;
+                // VERIFY: 以下属性名需对照 KSP2 源码确认其一
+                var db = game.ResourceDefinitionDatabase; // 常见命名
+                return db;
+            }
+        }
+
+        /// <summary>遍历一艘飞船的所有零件（跨端零件顺序/IGGuid 稳定）。VERIFY: 行为获取与零件枚举 API。</summary>
+        public static void ForEachPart(VesselComponent vessel, Action<PartComponent> action)
+        {
+            if (vessel == null || action == null) return;
+            var view = Game.Instance?.UniverseView;
+            if (view == null) return;
+
+            // VERIFY: 取 VesselBehavior（含 PartOwner）。泛型 GetBehaviorIfLoaded 或带 out 参数的重载二选一
+            var behavior = view.GetBehaviorIfLoaded<VesselBehavior>(vessel);
+            var owner = behavior?.PartOwner; // PartOwnerComponent
+            if (owner?.Parts == null) return;
+
+            // PartOwnerComponent.Parts 是 PartInfoDictionary<IGGuid, PartInfo>
+            foreach (var kv in owner.Parts)
+            {
+                if (owner.TryGetPartValue(kv.Key, out var part) && part != null)
+                    action(part);
+            }
+        }
+
+        /// <summary>把一条资源消息写回远端飞船：逐记录定位零件容器并 SetResourceStoredUnits。</summary>
+        public static void ApplyVesselResources(VesselResourceMsgData d)
+        {
+            if (!Guid.TryParse(d.VesselId, out var g)) return;
+            var sim = Game.Instance?.SpaceSimulation;
+            if (sim == null) return;
+            var igg = new IGGuid(g); // VERIFY: IGGuid 构造
+            var remote = sim.GetSimulationObjectComponent<VesselComponent>(igg);
+            if (remote == null || remote.IsLocallyOwned) return;
+
+            var db = ResourceDatabase;
+            if (db == null) return;
+
+            int n = Math.Min(d.EntryCount, VesselResourceMsgData.MaxEntries);
+            for (int i = 0; i < n; i++)
+            {
+                var partGuid = d.PartGuids[i];
+                var resName = d.ResourceNames[i];
+                if (string.IsNullOrEmpty(partGuid) || string.IsNullOrEmpty(resName)) continue;
+
+                PartComponent target = null;
+                ForEachPart(remote, p =>
+                {
+                    if (p.Guid == partGuid) target = p; // VERIFY: PartComponent.Guid
+                });
+                if (target == null) continue;
+
+                var container = target.PartResourceContainer as IResourceContainer; // VERIFY: 容器类型转换
+                if (container == null) continue;
+
+                try
+                {
+                    var resId = db.GetResourceIDFromName(resName);
+                    container.SetResourceStoredUnits(resId, d.Amounts[i]);
+                }
+                catch (Exception e)
+                {
+                    Ksp2Logger.Debug($"资源写入跳过 {resName}: {e.Message}");
+                }
+            }
         }
     }
 }
