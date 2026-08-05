@@ -45,7 +45,49 @@ LunaMultiplayer.KSP2/
 1. 用 Visual Studio / `dotnet build` 打开 `LunaMultiplayer.KSP2.csproj`。
 2. 把 csproj 里的 `KSP2GameDir` 指向你的 KSP2 安装目录（默认 `F:\Program Files\Epic Games\Kerbal.Space.Program.2`）。
 3. 还原 NuGet 包 `Lidgren.Network`。
-4. 编译产出 `LunaMultiplayer.KSP2.dll`，放入 KSP2 的 `BepInEx/plugins/` 下。
+4. 编译产出 `LunaMultiplayer.KSP2.dll` + `Lidgren.Network.dll` + `swinfo.json`（三者必须放在同一个**子目录**里，见下方安装）。
+
+## 安装（KSP2 Redux / SpaceWarp2 环境）
+
+Redux 版 KSP2 没有启用 BepInEx 链式加载器（缺 `winhttp.dll`），第三方 mod 由 Redux 内置的
+mod 目录 **`mods/<ModName>/swinfo.json`** 发现并加载。dll **不能直接丢在 `BepInEx/plugins\` 根**，
+必须放进游戏根目录的 `mods\<ModName>\` 子目录：
+
+> ⚠️ **入口类必须是 SpaceWarp2 模块，不能是普通 BepInEx 插件。**
+> `Plugin` 继承自 `SpaceWarp2.API.Mods.GeneralMod`（实现 `ISpaceWarpMod`），
+> 初始化逻辑写在重写的 `OnInitialized()` 里（不是 `Awake()`）。
+> 若误用 `BaseUnityPlugin`，Redux 环境下 SpaceWarp2 根本不会实例化它——表现为
+> `Ksp2.log` 里完全没有本 mod 的痕迹、也无人加载失败报错。普通 `BaseUnityPlugin`
+> 只在完整 BepInEx 链加载器（有 doorstop 注入）的原版 KSP2 里才有效。
+
+```
+mods/LunaMultiplayer.KSP2/
+├── LunaMultiplayer.KSP2.dll
+├── Lidgren.Network.dll
+└── swinfo.json
+```
+
+一键安装（管理员 PowerShell）：
+
+```powershell
+$src = 'F:\缓存\软件缓存\workboddy\2026-08-02-17-40-23\ksp2_mp\LunaMultiplayer.KSP2\bin\Debug\netstandard2.1'
+$mods = 'F:\Program Files\Epic Games\Kerbal.Space.Program.2\mods'
+$dst = "$mods\LunaMultiplayer.KSP2"
+# 清理旧的错误放置（BepInEx/plugins 根目录下的散落 dll）
+$oldPlugins = 'F:\Program Files\Epic Games\Kerbal.Space.Program.2\BepInEx\plugins'
+Remove-Item "$oldPlugins\LunaMultiplayer.KSP2.dll" -ErrorAction SilentlyContinue
+Remove-Item "$oldPlugins\Lidgren.Network.dll"      -ErrorAction SilentlyContinue
+New-Item -ItemType Directory -Force -Path $dst | Out-Null
+Copy-Item "$src\LunaMultiplayer.KSP2.dll" $dst -Force
+Copy-Item "$src\Lidgren.Network.dll"      $dst -Force
+Copy-Item "$src\swinfo.json"              $dst -Force
+Write-Host "已安装到 $dst :"; Get-ChildItem $dst
+```
+
+> 注意：游戏程序集（`Assembly-CSharp`/`UnityEngine.CoreModule`）本身编译目标就是 netstandard 2.1，
+> 所以本 mod **必须**用 `netstandard2.1`（改 2.0 会与游戏程序集版本冲突，CS1705）。
+> 启动后看 `Ksp2.log` 里 `[Space Warp] Registered plugin: LunaMultiplayer KSP2` 即表示注册成功；
+> 再看是否有 `[LMP2]` 日志以确认 `OnInitialized()` 实际执行。
 
 ## ⚠️ 集成点核对（VERIFY）
 
