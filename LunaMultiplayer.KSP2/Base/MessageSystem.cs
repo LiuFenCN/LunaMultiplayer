@@ -81,7 +81,10 @@ namespace LunaMultiplayer.KSP2.Base
 
         protected override void OnDisabled()
         {
-            MessageHandler.IncomingMessages = new ConcurrentQueue<IMessageData>();
+            // IncomingMessages 通过 IMessageHandler 接口只暴露只读属性，无法重新赋值。
+            // 改为排空队列以丢弃待处理的入站消息（接口引用下也能调用 TryDequeue）。
+            var queue = MessageHandler.IncomingMessages;
+            while (queue.TryDequeue(out _)) { }
         }
     }
 }
