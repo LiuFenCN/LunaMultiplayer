@@ -53,6 +53,16 @@
       <HintPath>$(KSP2Managed)\UnityEngine.CoreModule.dll</HintPath>
       <Private>false</Private>
     </Reference>
+    <!-- IMGUI（GUILayout/GUI/OnGUI 窗口）所在模块，UI 需要 -->
+    <Reference Include="UnityEngine.IMGUIModule">
+      <HintPath>$(KSP2Managed)\UnityEngine.IMGUIModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <!-- Input 类（键位检测）所在模块 -->
+    <Reference Include="UnityEngine.InputLegacyModule">
+      <HintPath>$(KSP2Managed)\UnityEngine.InputLegacyModule.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <!-- BepInEx 运行时 + HarmonyX 注入 -->
     <Reference Include="BepInEx">
       <HintPath>$(BepInExCore)\BepInEx.dll</HintPath>
