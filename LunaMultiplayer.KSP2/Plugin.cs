@@ -5,6 +5,7 @@ using LunaMultiplayer.KSP2.Core;
 using LunaMultiplayer.KSP2.Network;
 using LunaMultiplayer.KSP2.Systems.TimeSyncSys;
 using LunaMultiplayer.KSP2.Systems.VesselPositionSys;
+using LunaMultiplayer.KSP2.Systems.VesselResourceSys;
 using System;
 
 namespace LunaMultiplayer.KSP2
@@ -22,6 +23,7 @@ namespace LunaMultiplayer.KSP2
         // 系统实例
         private VesselPositionSystem _vesselSystem;
         private TimeSyncSystem _timeSystem;
+        private VesselResourceSystem _resourceSystem;
 
         private void Awake()
         {
@@ -32,6 +34,7 @@ namespace LunaMultiplayer.KSP2
             // 主动注册消息类型，确保收到网络包时反序列化能找到类型
             MessageRegistry.Register(typeof(VesselPositionMsgData));
             MessageRegistry.Register(typeof(TimeSyncMsgData));
+            MessageRegistry.Register(typeof(VesselResourceMsgData));
 
             // 启动网络线程（Lidgren 客户端）
             NetworkMain.Start();
@@ -44,8 +47,10 @@ namespace LunaMultiplayer.KSP2
             // 实例化并启用同步系统
             _vesselSystem = new VesselPositionSystem();
             _timeSystem = new TimeSyncSystem();
+            _resourceSystem = new VesselResourceSystem();
             _vesselSystem.SetEnabled(true);
             _timeSystem.SetEnabled(true);
+            _resourceSystem.SetEnabled(true);
 
             Ksp2Logger.Info("系统已启用。连接示例：NetworkConnection.Connect(host, port)");
             // 例：NetworkConnection.Connect("127.0.0.1", 8800);
@@ -55,6 +60,7 @@ namespace LunaMultiplayer.KSP2
         {
             _vesselSystem?.SetEnabled(false);
             _timeSystem?.SetEnabled(false);
+            _resourceSystem?.SetEnabled(false);
             NetworkMain.Stop();
             Ksp2Logger.Info("LunaMultiplayer KSP2 卸载");
         }
