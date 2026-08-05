@@ -9,9 +9,23 @@ namespace LunaMultiplayer.KSP2.Core
     /// </summary>
     public static class Ksp2Logger
     {
-        public static void Info(string message) => global::UnityEngine.Debug.Log("[LMP2] " + message);
-        public static void Warn(string message) => global::UnityEngine.Debug.LogWarning("[LMP2] " + message);
-        public static void Error(string message) => global::UnityEngine.Debug.LogError("[LMP2] " + message);
-        public static void Debug(string message) => global::UnityEngine.Debug.Log("[LMP2][DBG] " + message);
+        // UI 用：保存最近若干条日志，供游戏内窗口滚动显示
+        public static readonly object Lock = new();
+        public static readonly System.Collections.Generic.List<string> Recent = new();
+        private const int MaxRecent = 80;
+
+        private static void Push(string line)
+        {
+            lock (Lock)
+            {
+                Recent.Add(line);
+                if (Recent.Count > MaxRecent) Recent.RemoveAt(0);
+            }
+        }
+
+        public static void Info(string message) { Push(message); global::UnityEngine.Debug.Log("[LMP2] " + message); }
+        public static void Warn(string message) { Push(message); global::UnityEngine.Debug.LogWarning("[LMP2] " + message); }
+        public static void Error(string message) { Push(message); global::UnityEngine.Debug.LogError("[LMP2] " + message); }
+        public static void Debug(string message) { Push(message); global::UnityEngine.Debug.Log("[LMP2][DBG] " + message); }
     }
 }
