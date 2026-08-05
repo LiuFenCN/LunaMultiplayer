@@ -65,12 +65,6 @@ namespace LunaMultiplayer.KSP2
         private VesselActionGroupSystem _actionGroupSystem;
         private VesselStructureSystem _structureSystem;
 
-        // 联机模式配置（硬编码默认值；在 Redux 下无 BepInEx 配置文件支持，改这里即可切换模式）
-        private bool _hostMode = false;
-        private int _hostPort = 8800;
-        private string _serverAddress = "";
-        private int _serverPort = 8800;
-
         public override void OnInitialized()
         {
             // 用裸 UnityEngine.Debug 打入口标记，防止 Ksp2Logger 或 SpaceWarp 日志层异常导致看不到
@@ -103,27 +97,16 @@ namespace LunaMultiplayer.KSP2
                 MessageRegistry.Register(typeof(VesselStructureMsgData));
                 Ksp2Logger.Info("[LMP2] MessageRegistry 注册完成");
 
-                // 启动网络线程（Lidgren 客户端）
+                // 启动网络线程（Lidgren 客户端，待命，不自动连接）
                 NetworkMain.Start();
                 Ksp2Logger.Info("[LMP2] NetworkMain.Start() 完成");
-
-                // 按配置选择联机模式
-                if (_hostMode)
-                {
-                    NetworkConnection.Host(_hostPort);
-                    Ksp2Logger.Info($"[LMP2] Host 模式已启动端口 {_hostPort}");
-                }
-                else if (!string.IsNullOrWhiteSpace(_serverAddress))
-                {
-                    NetworkConnection.Connect(_serverAddress, _serverPort);
-                    Ksp2Logger.Info($"[LMP2] 已连接到 {_serverAddress}:{_serverPort}");
-                }
 
                 // 主循环驱动器
                 var runner = new GameObject("LMP2_Runner");
                 UnityEngine.Object.DontDestroyOnLoad(runner);
                 runner.AddComponent<Ksp2Runner>();
-                Ksp2Logger.Info("[LMP2] Ksp2Runner 已挂载");
+                runner.AddComponent<Lmp2Ui>();   // 游戏内 UI（按 F7 开关）
+                Ksp2Logger.Info("[LMP2] Ksp2Runner / Lmp2Ui 已挂载");
 
                 // 实例化并启用同步系统
                 _vesselSystem = new VesselPositionSystem();
