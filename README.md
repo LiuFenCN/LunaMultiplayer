@@ -28,10 +28,11 @@ LunaMultiplayer.KSP2/
   Network/
     NetworkMain / NetworkSender / NetworkReceiver / NetworkConnection / MessageRouter
   Systems/
-    VesselPositionSys/          飞船位置同步（Sender 读 KSP.Sim，Handler 入队，Update 插值写回）
+    VesselPositionSys/          飞船位置同步（Sender 读 KSP.Sim，Handler 入缓冲，FixedUpdate 时间插值写回）
     TimeSyncSys/                时间同步（NTP 风格，subspace 基础）
+    VesselResourceSys/          零件级资源同步（燃料/电量等，按 partGuid+resourceName 写回容器）
   VesselUtilities/
-    VesselCommon.cs             KSP.Sim 飞船工具 + 远端飞船状态写入（TeleportSimObjectToOrbit）
+    VesselCommon.cs             KSP.Sim 飞船工具 + 远端状态写入（TeleportSimObjectToOrbit / SetResourceStoredUnits）
   Patches/
     SpaceSimulationPatch.cs     可选：Harmony 挂 KSP2 仿真循环（默认不启用）
 ```
@@ -56,14 +57,20 @@ LunaMultiplayer.KSP2/
    `inclination, eccentricity, semiMajorAxis, LAN, argumentOfPeriapsis, meanAnomalyAtEpoch, epoch, referenceBody`）。
 5. `SpaceSimulation.UniverseModel` 是否实现 `IUniverseTime`（取 `UniverseTime`）。
 6. `VesselComponent.OrbitalVelocity`（`Vector` 结构，含 `x,y,z`）。
+7. 资源同步：`Game.Instance.ResourceDefinitionDatabase` 的访问器命名；
+   `UniverseView.GetBehaviorIfLoaded<VesselBehavior>(vessel)` 取 `PartOwner`；
+   `PartOwnerComponent.Parts`（`PartInfoDictionary<IGGuid,PartInfo>`）的枚举与 `TryGetPartValue`；
+   `PartComponent.Guid` / `PartComponent.PartResourceContainer` 类型转换；
+   `ContainedResourceData` 的字段名（`ResourceID` / `StoredUnits`）。
 
 服务端（host）侧目前复用 LMP 的 `Server` 项目（同为 Lidgren、引擎无关），后续可做 KSP2 专用轻量中继。
 
 ## 当前进度
 
 - ✅ 网络层（Lidgren 客户端 + 收发线程 + 消息路由）
-- ✅ 飞船位置同步（读 KSP.Sim 发送 / 接收入队 / FixedUpdate 写回）
+- ✅ 飞船位置同步（读 KSP.Sim 发送 / 接收入缓冲 / 时间插值写回）
 - ✅ 时间同步（NTP 风格偏移估算）
-- 🚧 插值（目前直接应用最新消息，插值队列已预留）
-- 🚧 零件级资源同步（燃料/电量）、对接/分离、动作组
+- ✅ 飞船位置时间插值（缓冲样本 + 轨道根数 lerp + 朝向 Slerp，延迟 200ms）
+- ✅ 零件级资源同步（燃料/电量等，按 partGuid+resourceName 写回容器，2Hz 节流）
+- 🚧 对接/分离、动作组
 - 🚧 host 模式 / 专用服务端
