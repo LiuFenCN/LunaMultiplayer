@@ -1,6 +1,7 @@
 using Lidgren.Network;
 using System.Collections.Concurrent;
 using System.Threading;
+using LunaMultiplayer.KSP2.Base;
 
 namespace LunaMultiplayer.KSP2.Network
 {
