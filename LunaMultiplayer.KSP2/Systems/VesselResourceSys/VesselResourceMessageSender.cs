@@ -30,10 +30,10 @@ namespace LunaMultiplayer.KSP2.Systems.VesselResourceSys
             VesselCommon.ForEachPart(vessel, part =>
             {
                 if (idx >= VesselResourceMsgData.MaxEntries) return;
-                var container = part.PartResourceContainer as IResourceContainer; // VERIFY: 容器类型转换
+                var container = part.PartResourceContainer; // ResourceContainer : IResourceContainer
                 if (container == null) return;
 
-                var data = container.GetContainedResourceData(); // VERIFY: 返回 List<ContainedResourceData>
+                var data = container.GetAllResourcesContainedData(); // IEnumerable<ContainedResourceData>
                 if (data == null) return;
                 foreach (var rd in data)
                 {
