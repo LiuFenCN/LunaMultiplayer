@@ -14,9 +14,6 @@ namespace LunaMultiplayer.KSP2.Systems.VesselPositionSys
         public static ConcurrentDictionary<Guid, VesselPositionUpdate> CurrentVesselUpdate { get; } =
             new ConcurrentDictionary<Guid, VesselPositionUpdate>();
 
-        public static ConcurrentDictionary<Guid, PositionUpdateQueue> TargetVesselUpdateQueue { get; } =
-            new ConcurrentDictionary<Guid, PositionUpdateQueue>();
-
         public override string SystemName => nameof(VesselPositionSystem);
 
         // 10Hz 广播本机飞船位置
@@ -33,7 +30,6 @@ namespace LunaMultiplayer.KSP2.Systems.VesselPositionSys
         protected override void OnDisabled()
         {
             CurrentVesselUpdate.Clear();
-            TargetVesselUpdateQueue.Clear();
             base.OnDisabled();
         }
 
@@ -59,7 +55,6 @@ namespace LunaMultiplayer.KSP2.Systems.VesselPositionSys
         public void RemoveVessel(Guid id)
         {
             CurrentVesselUpdate.TryRemove(id, out _);
-            TargetVesselUpdateQueue.TryRemove(id, out _);
         }
     }
 }
