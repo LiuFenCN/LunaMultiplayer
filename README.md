@@ -27,12 +27,15 @@ LunaMultiplayer.KSP2/
     SystemBase / MessageSystem / SubSystem / MessageHandlerBase / MessageSenderBase
   Network/
     NetworkMain / NetworkSender / NetworkReceiver / NetworkConnection / MessageRouter
+    RelayServer.cs              轻量中继服务端（host 模式，Lidgren NetServer 字节级转发）
   Systems/
     VesselPositionSys/          飞船位置同步（Sender 读 KSP.Sim，Handler 入缓冲，FixedUpdate 时间插值写回）
     TimeSyncSys/                时间同步（NTP 风格，subspace 基础）
     VesselResourceSys/          零件级资源同步（燃料/电量等，按 partGuid+resourceName 写回容器）
+    VesselActionGroupSys/       动作组同步（声明顺序位掩码编码 KSPActionGroup，Get/SetActionGroupState）
+    VesselStructureSys/         对接/分离/级间分离同步（轮询 PartOwnerComponent.PartCount 检测结构变化）
   VesselUtilities/
-    VesselCommon.cs             KSP.Sim 飞船工具 + 远端状态写入（TeleportSimObjectToOrbit / SetResourceStoredUnits）
+    VesselCommon.cs             KSP.Sim 飞船工具 + 远端状态写入（TeleportSimObjectToOrbit / SetResourceStoredUnits）+ 天体引力参数/零件数缓存
   Patches/
     SpaceSimulationPatch.cs     可选：Harmony 挂 KSP2 仿真循环（默认不启用）
 ```
@@ -44,33 +47,39 @@ LunaMultiplayer.KSP2/
 3. 还原 NuGet 包 `Lidgren.Network`。
 4. 编译产出 `LunaMultiplayer.KSP2.dll`，放入 KSP2 的 `BepInEx/plugins/` 下。
 
-## ⚠️ 需对照 KSP2 源码确认的集成点（VERIFY）
+## ⚠️ 集成点核对（VERIFY）
 
-代码已在本地通过反射测绘 API 后编写，但以下位置在真正编译/运行前需在 KSP2 源码里核对
-（均已标注 `// VERIFY`）：
+代码先通过反射测绘 KSP2 API 后编写，csproj 直接引用本机 KSP2 的 `Assembly-CSharp.dll` 等游戏程序集，
+因此以下位置已由 `dotnet build` **编译期坐实**（不再需要运行时核对）：
 
-1. `SpaceSimulation.GetVesselGuids()` 返回集合的元素类型（应为 `IGGuid`）。
-2. `IGGuid` 从 `System.Guid` 的构造/转换方式（`new IGGuid(g)` / `IGGuid.Parse` / 隐式转换）。
-3. `ITransformModel.Rotation` 的类型与字段（`Rotation` 结构，含 `x,y,z,w`），以及其 setter 形态
-   （属性赋值 or `UpdateRotation(Rotation)` 方法）。
-4. `KeplerOrbitState` 构造参数顺序/类型（标准 KSP 为
-   `inclination, eccentricity, semiMajorAxis, LAN, argumentOfPeriapsis, meanAnomalyAtEpoch, epoch, referenceBody`）。
-5. `SpaceSimulation.UniverseModel` 是否实现 `IUniverseTime`（取 `UniverseTime`）。
-6. `VesselComponent.OrbitalVelocity`（`Vector` 结构，含 `x,y,z`）。
-7. 资源同步：`Game.Instance.ResourceDefinitionDatabase` 的访问器命名；
-   `UniverseView.GetBehaviorIfLoaded<VesselBehavior>(vessel)` 取 `PartOwner`；
-   `PartOwnerComponent.Parts`（`PartInfoDictionary<IGGuid,PartInfo>`）的枚举与 `TryGetPartValue`；
-   `PartComponent.Guid` / `PartComponent.PartResourceContainer` 类型转换；
-   `ContainedResourceData` 的字段名（`ResourceID` / `StoredUnits`）。
+1. ✅ `SpaceSimulation.GetVesselGuids()` 返回 `ICollection<string>`（GUID 字符串，非 `IGGuid`）——代码中用 `IGGuid.TryParse` 转换。
+2. ✅ `IGGuid` 转换：`IGGuid.TryParse(string, out IGGuid)` / 隐式 `Guid↔IGGuid`。
+3. ✅ `ITransformModel.Rotation`（`Rotation` 结构，含 `x,y,z,w`）。
+4. ✅ `KeplerOrbitState` 构造参数顺序/类型。
+5. ✅ `SpaceSimulation.UniverseModel` 实现 `IUniverseTime`，取 `UniverseTime`。
+6. ✅ `VesselComponent.OrbitalVelocity`（`Vector` 结构，含 `x,y,z`）。
+7. ✅ 资源同步：`GameManager.Instance.Game.ResourceDefinitionDatabase` 访问器；
+   `CelestialBodyComponent.gravParameter`（2 体传播用 μ）；
+   零件资源容器 `PartResourceContainer` / `SetResourceStoredUnits`。
 
-服务端（host）侧目前复用 LMP 的 `Server` 项目（同为 Lidgren、引擎无关），后续可做 KSP2 专用轻量中继。
+> 注意：全局游戏访问器是 `KSP.Game.GameManager.Instance.Game`（`GameManager` 有静态 `Instance`，
+> 返回 `GameInstance`），**不是** `GameInstance.Instance`——`GameInstance` 是 `MonoBehaviour`，无静态实例。
+
+## 联机模式（host / 客户端）
+
+- **房主（host）**：在 BepInEx 配置文件里设 `HostMode=true`、`HostPort=8800`，启动即开房并起轻量中继服务端；
+  房主自身也通过 loopback 接入，复用同一套收发管线。
+- **玩家（客户端）**：设 `ServerAddress=房主IP`、`ServerPort=8800`，启动自动连；或运行时调用
+  `NetworkConnection.Connect(ip, 8800)`。
+- **中继模型**：星型拓扑，服务端只做 `ClientMessage` 字节级转发（回弹抑制：不把消息发回发送者），
+  每个客户端各自跑自己的 KSP2 仿真，靠状态广播实现 co-op。当前为轻量中继，不做服务端权威仲裁。
 
 ## 当前进度
 
 - ✅ 网络层（Lidgren 客户端 + 收发线程 + 消息路由）
 - ✅ 飞船位置同步（读 KSP.Sim 发送 / 接收入缓冲 / 时间插值写回）
 - ✅ 时间同步（NTP 风格偏移估算）
-- ✅ 飞船位置时间插值（缓冲样本 + 轨道根数 lerp + 朝向 Slerp，延迟 200ms）
+- ✅ 飞船位置时间插值（缓冲样本 + 2 体平近点角传播 n=√(μ/a³) + 朝向 Slerp，延迟 200ms）
 - ✅ 零件级资源同步（燃料/电量等，按 partGuid+resourceName 写回容器，2Hz 节流）
-- 🚧 对接/分离、动作组
-- 🚧 host 模式 / 专用服务端
+- ✅ 对接/分离、动作组同步（VesselStructureSys + VesselActionGroupSys）
+- ✅ host 模式 / 轻量中继服务端（RelayServer + 配置驱动切换）
