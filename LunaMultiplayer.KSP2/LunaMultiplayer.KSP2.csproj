@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
+    <TargetFramework>netstandard2.1</TargetFramework>
     <LangVersion>latest</LangVersion>
     <AssemblyName>LunaMultiplayer.KSP2</AssemblyName>
     <RootNamespace>LunaMultiplayer.KSP2</RootNamespace>
@@ -56,7 +56,7 @@
 
   <ItemGroup>
     <!-- Lidgren 网络层：引擎无关，直接复用 LMP 的可靠 UDP 实现 -->
-    <PackageReference Include="Lidgren.Network" Version="2015.8.29.1" />
+    <PackageReference Include="Lidgren.Network" Version="2012.2.15.2" />
   </ItemGroup>
 
 </Project>
