@@ -206,3 +206,32 @@ LunaMultiplayer.KSP2/                 # BepInEx 插件工程（新）
 4. 接 LMP 的 Lidgren 收发，做单向广播（host→client）。
 5. 加 `TimeSync` + Subspace。
 6. 清理游戏目录里的 KSP1 LMP 残骸。
+
+---
+
+## 10. 进度日志（2026-08-06）
+
+### 10.1 飞船位置时间插值 ✅
+- 复用消息里已有的 `GameTime` 字段作样本时间戳（发送端填 `Ksp2Time.UniversalTime`）。
+- `VesselPositionUpdate` 改为显式样本缓冲（最多 24 条，带本地时间戳 `msg.GameTime - TimeSyncSystem.ServerOffset`）。
+- 每帧 FixedUpdate 取 `renderTime = 本地统一时间 - 0.20s`，在包围它的两个样本间：
+  - **轨道根数[8]** 线性插值（亚秒窗口内近似静止；meanAnomalyAtEpoch/epoch 一并插值，在当前统一时刻求值即得到平滑沿轨位置）；
+  - **朝向四元数[4]** 球面线性插值（自实现 Slerp，无外部依赖）。
+- 落地复用既有 `VesselCommon.ApplyVesselUpdate`（→ `TeleportSimObjectToOrbit`），不引入新 VERIFY 面。
+- 已知限制：高速环绕飞船更精确的做法是用 `PatchedConicsOrbit`/`OrbiterComponent` 传播平近点角到 renderTime（需编译期接入 KSP2 轨道解算器），列为后续优化。
+
+### 10.2 零件级资源同步 ✅
+- 新增 `VesselResourceSys`：`VesselResourceMsgData`(MessageTypeId 111) + Sender/Handler/System。
+- 线格式：`VesselId` + 变长记录数组 `(partGuid, resourceName, amount)`，按 2Hz 节流广播。
+- 发送端枚举 `VesselBehavior.PartOwner.Parts`（跨端零件 IGGuid 稳定），读 `PartResourceContainer.GetContainedResourceData()`。
+- 接收端按 `partGuid` 定位远端零件，`SetResourceStoredUnits(db.GetResourceIDFromName(name), amount)` 写回。
+- 资源库访问、行为获取、零件枚举、ContainedResourceData 字段均为 VERIFY 点（集中在 `VesselCommon`）。
+
+### 10.3 当前 VERIFY 清单（累计）
+见 README「需对照 KSP2 源码确认的集成点」第 1–7 项。编译期一次性坐实即可；其余代码均基于反射测绘的真实 API。
+
+### 10.4 下一步可选
+1. 插值精度升级：用 KSP2 轨道解算器传播平近点角。
+2. 对接/分离、动作组同步。
+3. host 模式 / KSP2 专用轻量中继服务端（复用 LMP `Server` 工程）。
+4. 本地 `dotnet build` 编译，坐实 7 处 VERIFY。
