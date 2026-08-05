@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using LunaMultiplayer.KSP2.Base;
 
 namespace LunaMultiplayer.KSP2.Network
 {
