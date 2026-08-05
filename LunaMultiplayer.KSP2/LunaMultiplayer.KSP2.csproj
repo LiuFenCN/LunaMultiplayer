@@ -77,17 +77,22 @@
 
   <ItemGroup>
     <!-- swinfo.json：SpaceWarp2.ModuleManager 靠它发现并注册 mod。
-         必须随 dll 一起放进 BepInEx/plugins/<ModName>/ 子目录。 -->
+         必须随 dll 一起放进 mods/<ModName>/ 子目录。
+         关键字段 main_assembly：指向包含 ISpaceWarpMod 入口类的 dll；
+         缺失会被当成 AssetOnlyMod（仅资源、不执行代码）。 -->
     <None Include="swinfo.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
-  <!-- 把 Lidgren.Network.dll 从 NuGet 缓存拷到构建产物，确保部署时一并带上 -->
+  <!-- 把 Lidgren.Network.dll 从 NuGet 缓存拷到构建产物的 lib/ 子目录。
+       SpaceWarp2 在 RegisterMods 时只会预加载 <ModDir>/lib/*.dll 作为依赖，
+       入口 dll 由 swinfo 的 main_assembly 指定。依赖放 lib/ 才能被正确加载。 -->
   <Target Name="CopyLidgrenPostBuild" AfterTargets="Build">
     <ItemGroup>
       <_LidgrenDll Include="$(NuGetPackageRoot)lidgren.network\2012.2.15.2\lib\net45\Lidgren.Network.dll" />
     </ItemGroup>
+    <MakeDir Directories="$(OutDir)lib" />
     <Copy SourceFiles="@(_LidgrenDll)"
-          DestinationFolder="$(OutDir)"
+          DestinationFolder="$(OutDir)lib"
           SkipUnchangedFiles="true"
           Condition="Exists('%(_LidgrenDll.Identity)')" />
   </Target>
