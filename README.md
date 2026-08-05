@@ -45,7 +45,7 @@ LunaMultiplayer.KSP2/
 1. 用 Visual Studio / `dotnet build` 打开 `LunaMultiplayer.KSP2.csproj`。
 2. 把 csproj 里的 `KSP2GameDir` 指向你的 KSP2 安装目录（默认 `F:\Program Files\Epic Games\Kerbal.Space.Program.2`）。
 3. 还原 NuGet 包 `Lidgren.Network`。
-4. 编译产出 `LunaMultiplayer.KSP2.dll` + `Lidgren.Network.dll` + `swinfo.json`（三者必须放在同一个**子目录**里，见下方安装）。
+4. 编译产出 `LunaMultiplayer.KSP2.dll` + `swinfo.json` + `lib/Lidgren.Network.dll`（见下方安装布局）。
 
 ## 安装（KSP2 Redux / SpaceWarp2 环境）
 
@@ -53,18 +53,22 @@ Redux 版 KSP2 没有启用 BepInEx 链式加载器（缺 `winhttp.dll`），第
 mod 目录 **`mods/<ModName>/swinfo.json`** 发现并加载。dll **不能直接丢在 `BepInEx/plugins\` 根**，
 必须放进游戏根目录的 `mods\<ModName>\` 子目录：
 
-> ⚠️ **入口类必须是 SpaceWarp2 模块，不能是普通 BepInEx 插件。**
-> `Plugin` 继承自 `SpaceWarp2.API.Mods.GeneralMod`（实现 `ISpaceWarpMod`），
-> 初始化逻辑写在重写的 `OnInitialized()` 里（不是 `Awake()`）。
-> 若误用 `BaseUnityPlugin`，Redux 环境下 SpaceWarp2 根本不会实例化它——表现为
-> `Ksp2.log` 里完全没有本 mod 的痕迹、也无人加载失败报错。普通 `BaseUnityPlugin`
-> 只在完整 BepInEx 链加载器（有 doorstop 注入）的原版 KSP2 里才有效。
+> ⚠️ **入口类必须是 SpaceWarp2 模块，且 swinfo 必须声明 `main_assembly`。**
+> 1. `Plugin` 继承自 `SpaceWarp2.API.Mods.GeneralMod`（实现 `ISpaceWarpMod`），
+>    初始化逻辑写在重写的 `OnInitialized()` 里（不是 `Awake()`）。
+> 2. `swinfo.json` **必须**含 `"main_assembly": "LunaMultiplayer.KSP2.dll"`。
+>    缺失该字段时 SpaceWarp 会把 mod 当成 `AssetOnlyMod`（仅资源、不实例化、不调用 `OnInitialized`），
+>    表现为日志里「Registered plugin」出现、但没有任何 `[LMP2]` 输出、`Initialization completed in 0.0000s`。
+> 3. 依赖程序集（如 `Lidgren.Network.dll`）必须放在 mod 子目录的 **`lib/`** 下——
+>    SpaceWarp 的 `RegisterMods` 只预加载 `<ModDir>/lib/*.dll`。入口 dll 由 `main_assembly` 指定。
+>    （此外 `Plugin` 静态构造里挂了 `AssemblyResolve` 回退， doubly 保证 Lidgren 可在任意加载上下文解析到。）
 
 ```
 mods/LunaMultiplayer.KSP2/
-├── LunaMultiplayer.KSP2.dll
-├── Lidgren.Network.dll
-└── swinfo.json
+├── LunaMultiplayer.KSP2.dll      ← main_assembly 指向它
+├── swinfo.json
+└── lib/
+    └── Lidgren.Network.dll       ← 依赖放 lib/，SpaceWarp 会预加载
 ```
 
 一键安装（管理员 PowerShell）：
@@ -73,21 +77,22 @@ mods/LunaMultiplayer.KSP2/
 $src = 'F:\缓存\软件缓存\workboddy\2026-08-02-17-40-23\ksp2_mp\LunaMultiplayer.KSP2\bin\Debug\netstandard2.1'
 $mods = 'F:\Program Files\Epic Games\Kerbal.Space.Program.2\mods'
 $dst = "$mods\LunaMultiplayer.KSP2"
-# 清理旧的错误放置（BepInEx/plugins 根目录下的散落 dll）
+# 清理旧的错误放置（BepInEx/plugins 根目录、以及旧版散落的 Lidgren）
 $oldPlugins = 'F:\Program Files\Epic Games\Kerbal.Space.Program.2\BepInEx\plugins'
 Remove-Item "$oldPlugins\LunaMultiplayer.KSP2.dll" -ErrorAction SilentlyContinue
 Remove-Item "$oldPlugins\Lidgren.Network.dll"      -ErrorAction SilentlyContinue
-New-Item -ItemType Directory -Force -Path $dst | Out-Null
+Remove-Item "$dst\Lidgren.Network.dll"             -ErrorAction SilentlyContinue   # 旧版在根目录的
+New-Item -ItemType Directory -Force -Path "$dst\lib" | Out-Null
 Copy-Item "$src\LunaMultiplayer.KSP2.dll" $dst -Force
-Copy-Item "$src\Lidgren.Network.dll"      $dst -Force
 Copy-Item "$src\swinfo.json"              $dst -Force
-Write-Host "已安装到 $dst :"; Get-ChildItem $dst
+Copy-Item "$src\lib\Lidgren.Network.dll"  "$dst\lib" -Force
+Write-Host "已安装到 $dst :"; Get-ChildItem $dst -Recurse
 ```
 
 > 注意：游戏程序集（`Assembly-CSharp`/`UnityEngine.CoreModule`）本身编译目标就是 netstandard 2.1，
 > 所以本 mod **必须**用 `netstandard2.1`（改 2.0 会与游戏程序集版本冲突，CS1705）。
 > 启动后看 `Ksp2.log` 里 `[Space Warp] Registered plugin: LunaMultiplayer KSP2` 即表示注册成功；
-> 再看是否有 `[LMP2]` 日志以确认 `OnInitialized()` 实际执行。
+> 再看是否有 `[LMP2] >>> OnInitialized ENTRY` 以确认 `OnInitialized()` 实际执行。
 
 ## ⚠️ 集成点核对（VERIFY）
 
