@@ -22,41 +22,74 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--
+      游戏主程序集 / BepInEx / Unity 均为游戏运行时自带的框架程序集。
+      Private=false：构建时不要把它们拷进 bin —— 部署时只拷 mod 自身的 dll，
+      否则会反向覆盖游戏自己的程序集导致重复加载或崩溃。
+    -->
     <!-- 游戏主程序集（Mono，可反编译） -->
     <Reference Include="Assembly-CSharp">
       <HintPath>$(KSP2Managed)\Assembly-CSharp.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="SpaceWarp2">
       <HintPath>$(KSP2Managed)\SpaceWarp2.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="SpaceWarp2.Game">
       <HintPath>$(KSP2Managed)\SpaceWarp2.Game.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="ReduxLib">
       <HintPath>$(KSP2Managed)\ReduxLib.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <!-- UnityEngine 核心（KSP2 自带的 Mono 构建） -->
     <Reference Include="UnityEngine">
       <HintPath>$(KSP2Managed)\UnityEngine.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
       <HintPath>$(KSP2Managed)\UnityEngine.CoreModule.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <!-- BepInEx 运行时 + HarmonyX 注入 -->
     <Reference Include="BepInEx">
       <HintPath>$(BepInExCore)\BepInEx.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="BepInEx.Harmony">
       <HintPath>$(BepInExCore)\BepInEx.Harmony.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="0Harmony">
       <HintPath>$(BepInExCore)\0Harmony.dll</HintPath>
+      <Private>false</Private>
     </Reference>
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Lidgren 网络层：引擎无关，直接复用 LMP 的可靠 UDP 实现 -->
+    <!-- Lidgren 网络层：引擎无关，直接复用 LMP 的可靠 UDP 实现。
+         游戏不自带此 dll，必须随 mod 一起部署。
+         NuGet 包是 net45 目标，netstandard2.0 兼容，故用 post-build 显式拷出。 -->
     <PackageReference Include="Lidgren.Network" Version="2012.2.15.2" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- swinfo.json：SpaceWarp2.ModuleManager 靠它发现并注册 mod。
+         必须随 dll 一起放进 BepInEx/plugins/<ModName>/ 子目录。 -->
+    <None Include="swinfo.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- 把 Lidgren.Network.dll 从 NuGet 缓存拷到构建产物，确保部署时一并带上 -->
+  <Target Name="CopyLidgrenPostBuild" AfterTargets="Build">
+    <ItemGroup>
+      <_LidgrenDll Include="$(NuGetPackageRoot)lidgren.network\2012.2.15.2\lib\net45\Lidgren.Network.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(_LidgrenDll)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('%(_LidgrenDll.Identity)')" />
+  </Target>
 
 </Project>
