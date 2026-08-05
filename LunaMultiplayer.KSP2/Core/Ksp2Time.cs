@@ -15,7 +15,7 @@ namespace LunaMultiplayer.KSP2.Core
         {
             get
             {
-                var sim = Game.Instance?.SpaceSimulation;
+                var sim = GameManager.Instance?.Game?.SpaceSimulation;
                 if (sim?.UniverseModel is IUniverseTime ut)
                     return ut.UniverseTime;
                 return 0d;
@@ -26,7 +26,7 @@ namespace LunaMultiplayer.KSP2.Core
         {
             get
             {
-                var sim = Game.Instance?.SpaceSimulation;
+                var sim = GameManager.Instance?.Game?.SpaceSimulation;
                 if (sim?.UniverseModel is IUniverseTime ut)
                     return ut.IsTimePaused;
                 return false;
