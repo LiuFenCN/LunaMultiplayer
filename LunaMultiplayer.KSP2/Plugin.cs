@@ -30,6 +30,34 @@ namespace LunaMultiplayer.KSP2
 
         public static Plugin Instance { get; private set; }
 
+        /// <summary>
+        /// 静态构造：注册程序集解析回退，确保 Lidgren.Network 无论被 SpaceWarp
+        /// 以哪种加载上下文（LoadFile / LoadFrom）预载，都能被本 mod 正确解析到。
+        /// 仅在默认解析失败时触发，不会造成重复加载。
+        /// </summary>
+        static Plugin()
+        {
+            AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
+            {
+                try
+                {
+                    var name = new System.Reflection.AssemblyName(args.Name).Name;
+                    if (name == "Lidgren.Network")
+                    {
+                        var modDir = System.IO.Path.GetDirectoryName(typeof(Plugin).Assembly.Location) ?? ".";
+                        var candidate = System.IO.Path.Combine(modDir, "lib", "Lidgren.Network.dll");
+                        if (System.IO.File.Exists(candidate))
+                            return System.Reflection.Assembly.LoadFrom(candidate);
+                    }
+                }
+                catch
+                {
+                    // 解析失败就返回 null，交给运行时默认处理
+                }
+                return null;
+            };
+        }
+
         // 系统实例
         private VesselPositionSystem _vesselSystem;
         private TimeSyncSystem _timeSystem;
