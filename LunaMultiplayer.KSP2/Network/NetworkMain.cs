@@ -41,6 +41,7 @@ namespace LunaMultiplayer.KSP2.Network
         {
             try { Client?.Shutdown("LMP2 disconnect"); }
             catch { }
+            RelayServer.Stop();
             Thread.Sleep(200);
         }
     }
