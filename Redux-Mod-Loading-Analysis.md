@@ -13,7 +13,7 @@
 | 我们的 mod 能否被加载 | 认为不能 | **能**（只要放进 `mods/<ModName>/`） |
 | BepInEx 是否在运行 | 否 | 否（仍然正确） |
 | 之前为什么没加载 | 认为 Redux 没开放通道 | **因为我们把文件放进了 `BepInEx/plugins/`，而 Redux 的第三方 mod 路径是 `mods/`** |
-| 当前剩余问题 | — | `OnInitialized()` 没有可见日志输出，疑似静默失败；`swinfo.json` 的 `version_check` 指向 markdown 导致版本检查 NRE |
+| 当前剩余问题 | — | ~~`OnInitialized()` 没有可见日志输出~~ 已定位最终根因：**`swinfo.json` 缺失 `main_assembly` 字段 → SpaceWarp 把 mod 当成 `AssetOnlyMod`（仅资源、不实例化、不调用 `OnInitialized()`）**。修复：swinfo 加 `"main_assembly": "LunaMultiplayer.KSP2.dll"`，依赖 `Lidgren.Network.dll` 移入 `lib/`，`Plugin` 加 `AssemblyResolve` 回退。 |
 
 ---
 
@@ -43,22 +43,69 @@
 - 注册后会把该 mod 当作 SpaceWarp 插件，走 `PreInitialize → Initialize(OnInitialized) → PostInitialize` 生命周期。
 - `BepInEx/plugins/` 在 Redux 下**不用于第三方 mod 发现**（里面只保留 Redux 自带的 SpaceWarp/PatchManager/VSwift 等组件）。
 
-### 2.3 当前异常与疑点
+### 2.3 最终根因（2026-08-06 04:36 反编译 `SpaceWarp2.dll` 定位）
 
-#### A. `OnInitialized()` 没有可见输出
-`Plugin.cs` 的 `OnInitialized()` 开头就调用：
-```csharp
-Ksp2Logger.Info($"{PluginName} v{PluginVersion} 加载（SpaceWarp2 mod）");
+#### A. swinfo 缺 `main_assembly` → mod 被当成 `AssetOnlyMod`
+用 Mono.Cecil 反编译 `KSP2_x64_Data/Managed/SpaceWarp2.dll`，在
+`SpaceWarp2.API.Backend.Modding.PluginRegister.RegisterMods` 中看到：
+
 ```
-`Ksp2Logger` 底层是 `global::UnityEngine.Debug.Log("[LMP2] " + message)`。但 `Ksp2.log` 中搜索 `LMP2` **出现 0 次**。
+ldfld ModInfo.MainAssembly
+brfalse → new AssetOnlyMod(name)        // MainAssembly 为 null 时，只建资源型 mod
+...
+// MainAssembly 非空时才 Assembly.LoadFile(...MainAssembly)
+// 加载后在程序集中找 ISpaceWarpMod 实现（非抽象）→ new UnloadedMod(type)
+```
 
-同时 `Initialization for plugin LunaMultiplayer KSP2 completed in 0.0002s` 快得不正常（0.2ms），而 `OnInitialized()` 中还应：
-- 注册 5 个消息类型
-- 启动 Lidgren 网络线程
-- 创建 `GameObject` + `DontDestroyOnLoad` + 挂载 `Ksp2Runner`
-- 实例化并启用 5 个同步系统
+并且生命周期调用方 `SpaceWarp2.Patching.LoadingActions.InitializeModAction.DoAction` 的 IL 是：
 
-这些操作不可能在 0.2ms 内完成。**极大概率 `OnInitialized()` 在 `base.OnInitialized()` 或极早阶段抛出异常，被 SpaceWarp 的 init 包装器吞掉**。
+```
+ldfld _plugin.DoLoadingActions
+brfalse → 跳过（不调用 OnInitialized）
+ldfld _plugin.Plugin
+dup
+brtrue → callvirt ISpaceWarpMod.OnInitialized()   // 仅当 Plugin 实例非 null
+```
+
+结论：**只有当 `swinfo.json` 声明 `main_assembly` 时，SpaceWarp 才会加载我们的程序集、
+实例化 `Plugin`（Activator.CreateInstance）、并在 `InitializeModAction` 里调用 `OnInitialized()`。**
+我们之前没写 `main_assembly` → 走 `AssetOnlyMod` 分支 → `Plugin` 永远不被实例化 →
+日志里虽出现「Registered plugin」和 `Initialization ... completed`，但那是流程包装日志，
+`OnInitialized()` 从未执行，所以没有任何 `[LMP2]` 输出。
+
+#### B. 依赖程序集必须放 `lib/`
+`RegisterMods` 仅在 `<ModDir>/lib` 目录存在时预加载 `lib/*.dll`；入口 dll 由 `main_assembly` 指定。
+因此 `Lidgren.Network.dll` 必须置于 `mods/LunaMultiplayer.KSP2/lib/`，否则 `OnInitialized` 中
+`NetworkMain.Start()` 引用 Lidgren 时会 `FileNotFoundException`。`Plugin` 静态构造里另挂了
+`AssemblyResolve` 回退（从 `<ModDir>/lib/Lidgren.Network.dll` 解析），doubly 保证可解析。
+
+#### C. 修复清单（已落实到代码）
+1. `swinfo.json` 增加 `"main_assembly": "LunaMultiplayer.KSP2.dll"`。
+2. `LunaMultiplayer.KSP2.csproj`：post-build 把 `Lidgren.Network.dll` 拷到 `$(OutDir)lib`（原拷到根）。
+3. `Plugin.cs`：新增静态构造，挂 `AppDomain.CurrentDomain.AssemblyResolve` 解析 Lidgren 回退。
+4. `dotnet build -c Debug` 通过（0 错误）；布局变为 `LunaMultiplayer.KSP2.dll` + `swinfo.json` + `lib/Lidgren.Network.dll`。
+
+#### D. 验证方法（待用户重新安装后启动）
+游戏日志应出现：
+```
+[LMP2] >>> OnInitialized ENTRY
+[LMP2] base.OnInitialized OK
+[LMP2] MessageRegistry 注册完成
+[LMP2] NetworkMain.Start() 完成
+[LMP2] Ksp2Runner 已挂载
+[LMP2] <<< OnInitialized SUCCESS
+```
+若出现 `[LMP2] OnInitialized body FAILED: ...`，把异常贴回即可定位下一处。
+
+这些操作不可能在 0.2ms 内完成。
+
+**但后续排查发现真正原因不是异常，而是 `mods/LunaMultiplayer.KSP2/LunaMultiplayer.KSP2.dll` 还是旧版本。**
+
+- 已安装的 dll：37,888 字节，修改时间 **03:34**，不含 LMP2 入口日志。
+- 本地最新编译 dll：38,400 字节，修改时间 **04:01**，已加 `global::UnityEngine.Debug.Log("[LMP2] >>> OnInitialized ENTRY")` 与 try-catch。
+- 两者 sha256 不同。
+
+所以不是 `OnInitialized` 失败，而是运行时加载的 dll 本身就没有这些日志代码。更新 dll 后再次启动即可验证。
 
 #### B. `version_check` 指向 markdown 导致版本检查 NRE
 `swinfo.json` 中：
@@ -110,7 +157,19 @@ Ksp2Logger.Info($"{PluginName} v{PluginVersion} 加载（SpaceWarp2 mod）");
 
 ## 5. 下一步验证
 
-用户重新编译并复制到 `mods/LunaMultiplayer.KSP2/` 后，启动游戏，在 `Ksp2.log` 中检查：
+**先确认把最新 dll 复制过去**，再启动游戏：
+
+```powershell
+$src = 'F:\缓存\软件缓存\workboddy\2026-08-02-17-40-23\ksp2_mp\LunaMultiplayer.KSP2\bin\Debug\netstandard2.1'
+$dst = 'F:\Program Files\Epic Games\Kerbal.Space.Program.2\mods\LunaMultiplayer.KSP2'
+New-Item -ItemType Directory -Force -Path $dst | Out-Null
+Copy-Item "$src\LunaMultiplayer.KSP2.dll" $dst -Force
+Copy-Item "$src\Lidgren.Network.dll"      $dst -Force
+Copy-Item "$src\swinfo.json"              $dst -Force
+Get-ChildItem $dst | Select-Object Name, LastWriteTime, @{N='Size';E={$_.Length}}
+```
+
+启动游戏，在 `Ksp2.log` 中检查：
 
 1. 是否还有版本检查 NRE —— 应该消失。
 2. 是否有 `[LMP2] >>> OnInitialized ENTRY`。
