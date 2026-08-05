@@ -218,7 +218,7 @@ LunaMultiplayer.KSP2/                 # BepInEx 插件工程（新）
   - **轨道根数[8]** 线性插值（亚秒窗口内近似静止；meanAnomalyAtEpoch/epoch 一并插值，在当前统一时刻求值即得到平滑沿轨位置）；
   - **朝向四元数[4]** 球面线性插值（自实现 Slerp，无外部依赖）。
 - 落地复用既有 `VesselCommon.ApplyVesselUpdate`（→ `TeleportSimObjectToOrbit`），不引入新 VERIFY 面。
-- 已知限制：高速环绕飞船更精确的做法是用 `PatchedConicsOrbit`/`OrbiterComponent` 传播平近点角到 renderTime（需编译期接入 KSP2 轨道解算器），列为后续优化。
+- ✅ 已实现：高速环绕飞船改用 2 体平近点角传播（见 `VesselPositionUpdate.Interpolate`）：以 newer 样本的 M0 从 epoch 按 n=√(μ/a³) 传播到 renderTime，并把 KeplerOrbitState.epoch 设为 renderTime，消除"按根数线性插值"带来的沿轨位置误差。μ 取自参考天体的 `CelestialBodyComponent.gravParameter`（按 BodyGuid 缓存）。
 
 ### 10.2 零件级资源同步 ✅
 - 新增 `VesselResourceSys`：`VesselResourceMsgData`(MessageTypeId 111) + Sender/Handler/System。
@@ -231,7 +231,17 @@ LunaMultiplayer.KSP2/                 # BepInEx 插件工程（新）
 见 README「需对照 KSP2 源码确认的集成点」第 1–7 项。编译期一次性坐实即可；其余代码均基于反射测绘的真实 API。
 
 ### 10.4 下一步可选
-1. 插值精度升级：用 KSP2 轨道解算器传播平近点角。
-2. 对接/分离、动作组同步。
-3. host 模式 / KSP2 专用轻量中继服务端（复用 LMP `Server` 工程）。
-4. 本地 `dotnet build` 编译，坐实 7 处 VERIFY。
+1. ✅ 插值精度升级：用 2 体轨道解算传播平近点角（n=√(μ/a³)）。
+2. ✅ 对接/分离、动作组同步：`VesselStructureSys`（轮询 `PartOwnerComponent.PartCount` 检测对接/分离/级间分离并广播 `VesselStructureMsgData`）＋ `VesselActionGroupSys`（声明顺序位掩码编码 `KSPActionGroup`，`GetActionGroupState`/`SetActionGroup` 同步状态）。已接入 Plugin，`dotnet build` 0 错误。
+3. ✅ host 模式 / 轻量中继服务端：`Network/RelayServer.cs` 起 Lidgren `NetServer`，字节级把每个客户端的 `Data` 消息转发给其它客户端（星型中继）；host 自身通过 loopback 作为客户端接入，复用 `NetClient` 收发管线与 `MessageRouter`。`NetworkConnection.Host(port)` 一键起服；`Plugin` 新增 BepInEx 配置 `HostMode`/`HostPort`/`ServerAddress`/`ServerPort` 切换模式。`dotnet build` 0 错误。
+4. ✅ 本地 `dotnet build` 编译，坐实 7 处 VERIFY（含 `GameManager.Instance.Game` 修正、`GetVesselGuids` 元素为 string）。
+
+### 10.5 host 模式 / 中继拓扑说明
+- **拓扑**：星型。所有客户端（含 host）都连到 host 的 `NetServer`；服务端只做字节转发，不持有任何仿真状态。每个客户端各自跑自己的 KSP2 仿真，靠位置/资源/动作组/结构同步广播状态。
+- **协议复用**：转发的是原始 `ClientMessage` 字节，因此可完全透传现有消息类型（位置 101 / 时间 102 / 资源 103 / 动作组 112 / 结构 113），无需服务端理解语义。
+- **回弹抑制**：`RelayData` 跳过 `msg.SenderConnection`，发送者不会收到自己的回声，避免本地状态被自己的广播覆盖。
+- **未来可扩展**：若需"服务端权威 + 场景/飞船所有权仲裁 + 时间 warp 协调"，可在此 `RelayServer` 之上叠加 LMP `Server` 工程的握手/场景同步逻辑（当前 MVP 不做，因为 KSP2 各客户端独立仿真，中继转发已满足 co-op 需求）。
+- **用法**：
+  - 房主：BepInEx 配置 `HostMode=true`、`HostPort=8800`，启动即开房。
+  - 玩家：`ServerAddress=房主IP`、`ServerPort=8800`，启动自动连；或运行时 `NetworkConnection.Connect(ip, 8800)`。
+  - 也可运行时 `NetworkConnection.Host(8800)` / `Connect(ip, 8800)`。
