@@ -112,21 +112,32 @@ Write-Host "已安装到 $dst :"; Get-ChildItem $dst -Recurse
 > 注意：全局游戏访问器是 `KSP.Game.GameManager.Instance.Game`（`GameManager` 有静态 `Instance`，
 > 返回 `GameInstance`），**不是** `GameInstance.Instance`——`GameInstance` 是 `MonoBehaviour`，无静态实例。
 
-## 联机模式（host / 客户端）
+## 联机模式（游戏内 UI 操作）
 
-- **房主（host）**：在 BepInEx 配置文件里设 `HostMode=true`、`HostPort=8800`，启动即开房并起轻量中继服务端；
-  房主自身也通过 loopback 接入，复用同一套收发管线。
-- **玩家（客户端）**：设 `ServerAddress=房主IP`、`ServerPort=8800`，启动自动连；或运行时调用
-  `NetworkConnection.Connect(ip, 8800)`。
+mod 在游戏内提供一个窗口（**按 `F7` 开关**），无需改配置、无需拆服务端与客户端工程：
+
+- **创建服务器并加入**：在「创建服务器」页填端口（默认 `8800`），点按钮。
+  本 mod 会在本机起一个中继服务端（星型拓扑，端口监听），同时自身 loopback 接入，
+  立刻进入联机状态。把你的**局域网/公网 IP + 端口**告诉好友即可。
+- **加入服务器**：在「加入服务器」页填好友的服务器 IP 和端口，点「连接」。
+- **断开 / 关闭服务器**：对应按钮。
+
+窗口下方有实时连接状态与最近日志，方便排查。
+
+> 注：服务端逻辑（`RelayServer`，Lidgren `NetServer` 字节级转发）**内嵌在本 mod 内**，
+> 不需要单独的 Server 进程——host 同时也是客户端。这与 KSP1 LMP 的「独立 Server 工程」不同，
+> 是单体 mod 的简化实现，满足「创建服务器 + 和好友联机」即可。
+
 - **中继模型**：星型拓扑，服务端只做 `ClientMessage` 字节级转发（回弹抑制：不把消息发回发送者），
   每个客户端各自跑自己的 KSP2 仿真，靠状态广播实现 co-op。当前为轻量中继，不做服务端权威仲裁。
 
 ## 当前进度
 
 - ✅ 网络层（Lidgren 客户端 + 收发线程 + 消息路由）
+- ✅ **游戏内 UI**（`Core/Lmp2Ui.cs`：F7 开关、创建服务器/加入/断开、状态与日志，Unity IMGUI）
 - ✅ 飞船位置同步（读 KSP.Sim 发送 / 接收入缓冲 / 时间插值写回）
 - ✅ 时间同步（NTP 风格偏移估算）
 - ✅ 飞船位置时间插值（缓冲样本 + 2 体平近点角传播 n=√(μ/a³) + 朝向 Slerp，延迟 200ms）
 - ✅ 零件级资源同步（燃料/电量等，按 partGuid+resourceName 写回容器，2Hz 节流）
 - ✅ 对接/分离、动作组同步（VesselStructureSys + VesselActionGroupSys）
-- ✅ host 模式 / 轻量中继服务端（RelayServer + 配置驱动切换）
+- ✅ 创建服务器 / 轻量中继服务端（RelayServer，UI 触发）
