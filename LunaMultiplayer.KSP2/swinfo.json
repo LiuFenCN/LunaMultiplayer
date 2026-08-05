@@ -1,0 +1,22 @@
+{
+  "spec": "2.0",
+  "mod_id": "com.liufencn.lunamultiplayer.ksp2",
+  "author": "LiuFenCN",
+  "name": "LunaMultiplayer KSP2",
+  "description": "KSP2 联机 mod（fork 自 KSP1 LunaMultiplayer，重写同步层对接 KSP.Sim：飞船位置/时间/资源/动作组/对接分离 + host 中继）。",
+  "source": "https://github.com/LiuFenCN/LunaMultiplayer",
+  "version": "0.1.0",
+  "ksp2_version": {
+    "min": "0.2.0",
+    "max": "*"
+  },
+  "dependencies": [
+    {
+      "id": "com.github.x606.spacewarp",
+      "version": {
+        "min": "1.0.0",
+        "max": "*"
+      }
+    }
+  ]
+}
