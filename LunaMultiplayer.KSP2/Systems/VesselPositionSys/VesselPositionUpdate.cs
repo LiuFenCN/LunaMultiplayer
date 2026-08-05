@@ -11,12 +11,14 @@ namespace LunaMultiplayer.KSP2.Systems.VesselPositionSys
     /// 对应 LMP 的 VesselPositionUpdate（其 LerpArrays + 双样本混合），此处改为显式时间缓冲。
     ///
     /// 插值策略（针对 KSP2 已测绘 API 选定的安全路径）：
-    ///  - 轨道根数[8] 在亚秒级窗口内近似静止，直接对 8 个数线性插值即可平滑表现
-    ///    "沿轨道运动"（meanAnomalyAtEpoch/epoch 一并插值，在当前统一时刻求值即得到平滑位置）；
+    ///  - 形状根数[0..4]（倾角/偏心率/半长轴/升交点经度/近点幅角）在亚秒窗口内缓慢变化，线性插值；
+    ///  - 平近点角[5] 不再线性插值，而是用 2 体轨道力学把 newer 样本的 meanAnomalyAtEpoch 从 epoch
+    ///    传播到 renderTime：M_render = M0_B + n·(renderTime - epoch_B)，n = √(μ/a³)，μ 取自参考天体
+    ///    的 gravParameter。再把 KeplerOrbitState 的 epoch 设为 renderTime、meanAnomalyAtEpoch 设为
+    ///    M_render，使 KSP2 在 renderTime 处直接求值出该平近点角，并据此精确沿轨推进（消除高速环绕
+    ///    飞船的"按根数线性插值"带来的沿轨位置误差）；
     ///  - 朝向四元数[4] 用 Slerp；
     ///  - 落地的 ApplyVesselUpdate 复用既有 TeleportSimObjectToOrbit 路径，不引入新的 VERIFY 面。
-    /// 说明：对高速环绕飞船，更精确的做法是用 KSP2 的 PatchedConicsOrbit/OrbiterComponent 传播
-    ///       平近点角到 renderTime（需编译期接入 KSP2 轨道解算器），列为后续优化。
     /// </summary>
     public class VesselPositionUpdate
     {
@@ -81,11 +83,11 @@ namespace LunaMultiplayer.KSP2.Systems.VesselPositionSys
             if (renderTime <= _samples[0].LocalTime) { a = b = _samples[0]; t = 0; }
             else if (renderTime >= _samples[_samples.Count - 1].LocalTime) { a = b = _samples[_samples.Count - 1]; t = 0; }
 
-            var interp = Interpolate(a.Data, b.Data, t);
+            var interp = Interpolate(a.Data, b.Data, t, renderTime);
             VesselCommon.ApplyVesselUpdate(interp);
         }
 
-        private static VesselPositionMsgData Interpolate(VesselPositionMsgData a, VesselPositionMsgData b, double t)
+        private static VesselPositionMsgData Interpolate(VesselPositionMsgData a, VesselPositionMsgData b, double t, double renderTime)
         {
             var r = new VesselPositionMsgData
             {
@@ -98,8 +100,30 @@ namespace LunaMultiplayer.KSP2.Systems.VesselPositionSys
                 GameTime = b.GameTime
             };
 
-            for (int i = 0; i < 8; i++)
+            // 形状根数[0..4] 线性插值（缓慢变化）
+            for (int i = 0; i < 5; i++)
                 r.Orbit[i] = a.Orbit[i] + (b.Orbit[i] - a.Orbit[i]) * t;
+
+            // 平近点角[5] 与 epoch[6]：2 体传播（精度升级核心）
+            double mu = VesselCommon.GetBodyGravParameter(b.BodyGuid);
+            double aSma = r.Orbit[2];
+            if (mu > 0.0 && aSma > 1e-6 && double.IsFinite(aSma))
+            {
+                // 平均运动 n (rad/s)：μ = GM，a = 半长轴（米）
+                double n = Math.Sqrt(mu / (aSma * aSma * aSma));
+                double m0B = b.Orbit[5];
+                double epochB = b.Orbit[6];
+                double mRender = m0B + n * (renderTime - epochB);
+                r.Orbit[5] = (float)mRender;
+                r.Orbit[6] = (float)renderTime; // epoch 对齐 renderTime，KSP2 直接求值 mRender
+            }
+            else
+            {
+                // 退化（取不到 μ 或双曲/异常轨道）：退回对 M0/epoch 线性插值
+                r.Orbit[5] = a.Orbit[5] + (b.Orbit[5] - a.Orbit[5]) * t;
+                r.Orbit[6] = a.Orbit[6] + (b.Orbit[6] - a.Orbit[6]) * t;
+            }
+            r.Orbit[7] = 0;
 
             QuatSlerp(a.SrfRelRotation, b.SrfRelRotation, t, r.SrfRelRotation);
 
