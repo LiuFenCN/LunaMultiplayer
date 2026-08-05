@@ -5,6 +5,7 @@
   "name": "LunaMultiplayer KSP2",
   "description": "KSP2 联机 mod（fork 自 KSP1 LunaMultiplayer，重写同步层对接 KSP.Sim：飞船位置/时间/资源/动作组/对接分离 + host 中继）。",
   "source": "https://github.com/LiuFenCN/LunaMultiplayer",
+  "main_assembly": "LunaMultiplayer.KSP2.dll",
   "version": "0.1.0",
   "ksp2_version": {
     "min": "0.2.0",
