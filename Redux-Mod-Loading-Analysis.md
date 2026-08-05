@@ -17,6 +17,32 @@
 
 ---
 
+## 0. 最终验证结果（2026-08-06 04:44 启动确认 ✅）
+
+按 `main_assembly` + `lib/` 修复后重新部署并启动游戏，`Ksp2.log` 完整跑通 mod 生命周期，**零 mod 相关报错**：
+
+```
+[LOG 04:43:36.783] [LMP2] >>> OnInitialized ENTRY
+[LOG 04:43:36.783] [LMP2] base.OnInitialized OK
+[LOG 04:43:36.783] [LMP2] LunaMultiplayer KSP2 v0.1.0 加载（SpaceWarp2 mod）
+[LOG 04:43:36.785] [LMP2] [LMP2] MessageRegistry 注册完成
+[LOG 04:43:37.087] [LMP2] 网络线程已启动
+[LOG 04:43:37.087] [LMP2] [LMP2] NetworkMain.Start() 完成
+[LOG 04:43:37.089] [LMP2] [LMP2] Ksp2Runner 已挂载
+[LOG 04:43:37.092] [LMP2] 系统已启用。联机 API：NetworkConnection.Host(port) / Connect(host, port)
+[LOG 04:43:37.093] [LMP2] <<< OnInitialized SUCCESS
+[LOG 04:43:37.093] [System] Initialization for plugin LunaMultiplayer KSP2 completed in 0.3100s.
+[LOG 04:43:37.163] [System] Post-initialization for plugin LunaMultiplayer KSP2 completed in 0.0001s.
+[LOG 04:44:30.895] [LMP2] LunaMultiplayer KSP2 卸载
+```
+
+- `mods/LunaMultiplayer.KSP2/LunaMultiplayer.KSP2.dll` 与本地编译版 sha256 一致（`caae194f…`），布局为 `根 dll + swinfo.json + lib/Lidgren.Network.dll`。
+- 末尾 `[LMP2] LunaMultiplayer KSP2 卸载` 证明 `Application.quitting` 清理钩子也生效。
+- 日志里其余的 `Discord RPC` / `DOTWEEN` / `GraphicsManager.NullReferenceException(OnDestroy)` 警告与异常**均与本 mod 无关**（游戏本体/Discord SDK/渲染管理器关闭时的噪音）。
+- **结论：KSP2 Redux + SpaceWarp2 第三方 mod 的加载通道完全打通**，加载规范见第 3 节，已沉淀为可复用 skill `ksp2-redux-sw-mod-loading`。
+
+---
+
 ## 2. 证据链（来自真实日志与文件系统）
 
 ### 2.1 BepInEx 仍然没运行
