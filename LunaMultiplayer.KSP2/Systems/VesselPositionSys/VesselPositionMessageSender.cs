@@ -27,17 +27,17 @@ namespace LunaMultiplayer.KSP2.Systems.VesselPositionSys
             };
 
             // 速度（相对于天体的表面速度，对应 LMP 的 srf_velocity）
-            var vel = vessel.OrbitalVelocity;
-            msg.VelocityVector[0] = vel.x;
-            msg.VelocityVector[1] = vel.y;
-            msg.VelocityVector[2] = vel.z;
+            var vel = vessel.OrbitalVelocity; // KSP.Sim.Vector
+            msg.VelocityVector[0] = vel.vector.x;
+            msg.VelocityVector[1] = vel.vector.y;
+            msg.VelocityVector[2] = vel.vector.z;
 
-            // 朝向四元数（ITransformModel.Rotation 假设含 x,y,z,w）
-            var rot = vessel.transform.Rotation; // VERIFY: Rotation 结构字段
-            msg.SrfRelRotation[0] = (float)rot.x;
-            msg.SrfRelRotation[1] = (float)rot.y;
-            msg.SrfRelRotation[2] = (float)rot.z;
-            msg.SrfRelRotation[3] = (float)rot.w;
+            // 朝向四元数（ITransformModel.Rotation 是 KSP.Sim.Rotation，内部 localRotation 为 QuaternionD）
+            var rot = vessel.transform.Rotation;
+            msg.SrfRelRotation[0] = (float)rot.localRotation.x;
+            msg.SrfRelRotation[1] = (float)rot.localRotation.y;
+            msg.SrfRelRotation[2] = (float)rot.localRotation.z;
+            msg.SrfRelRotation[3] = (float)rot.localRotation.w;
 
             // 经典轨道根数（与 KSP1 布局一致）
             var o = vessel.Orbit;
