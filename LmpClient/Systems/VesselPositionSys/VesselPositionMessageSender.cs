@@ -1,4 +1,4 @@
-﻿using LmpClient.Base;
+using LmpClient.Base;
 using LmpClient.Base.Interface;
 using LmpClient.Extensions;
 using LmpClient.Network;
@@ -68,6 +68,7 @@ namespace LmpClient.Systems.VesselPositionSys
                 SetVelocityVector(vessel, msgData);
                 SetNormalVector(vessel, msgData);
                 SetOrbit(vessel, msgData);
+                SetNBody(vessel, msgData);
 
                 msgData.HeightFromTerrain = vessel.heightFromTerrain;
 
@@ -127,6 +128,35 @@ namespace LmpClient.Systems.VesselPositionSys
             msgData.SrfRelRotation[1] = vessel.srfRelRotation.y;
             msgData.SrfRelRotation[2] = vessel.srfRelRotation.z;
             msgData.SrfRelRotation[3] = vessel.srfRelRotation.w;
+        }
+
+        /// <summary>
+        /// N-body extension: when the controlled vessel is being propagated by a non-Keplerian integrator
+        /// (off-rails + orbital/suborbital/escaping situation, e.g. Principia), send its absolute world
+        /// position/velocity instead of (or in addition to) the Keplerian orbit. Every client that also runs
+        /// the same integrator re-seeds from this identical state, so trajectories stay in sync.
+        /// </summary>
+        private static void SetNBody(Vessel vessel, VesselPositionMsgData msgData)
+        {
+            var notLandedOrSplashed = !vessel.Landed && !vessel.Splashed;
+            var orbital = vessel.situation >= Vessel.Situations.ORBITING && vessel.situation <= Vessel.Situations.ESCAPING;
+
+            if (!vessel.packed && orbital && notLandedOrSplashed)
+            {
+                msgData.NBodyMode = 1;
+                var wp = vessel.GetWorldPos3d();
+                var wv = vessel.obt_velocity;
+                msgData.WorldPosition[0] = wp.x;
+                msgData.WorldPosition[1] = wp.y;
+                msgData.WorldPosition[2] = wp.z;
+                msgData.WorldVelocity[0] = wv.x;
+                msgData.WorldVelocity[1] = wv.y;
+                msgData.WorldVelocity[2] = wv.z;
+            }
+            else
+            {
+                msgData.NBodyMode = 0;
+            }
         }
 
         #endregion
