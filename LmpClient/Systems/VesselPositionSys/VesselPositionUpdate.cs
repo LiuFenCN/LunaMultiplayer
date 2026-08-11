@@ -1,4 +1,4 @@
-﻿using LmpClient.Extensions;
+using LmpClient.Extensions;
 using LmpClient.Systems.SettingsSys;
 using LmpClient.Systems.TimeSync;
 using LmpClient.Systems.VesselPositionSys.ExtensionMethods;
@@ -51,6 +51,11 @@ namespace LmpClient.Systems.VesselPositionSys
         public double GameTimeStamp { get; set; }
         public int SubspaceId { get; set; }
         public bool HackingGravity { get; set; }
+
+        // N-body extension fields (see VesselPositionMsgData)
+        public byte NBodyMode { get; set; }
+        public double[] WorldPosition { get; set; } = new double[3];
+        public double[] WorldVelocity { get; set; } = new double[3];
 
         #endregion
 
@@ -106,6 +111,10 @@ namespace LmpClient.Systems.VesselPositionSys
             Array.Copy(msgData.VelocityVector, VelocityVector, 3);
             Array.Copy(msgData.NormalVector, NormalVector, 3);
             Array.Copy(msgData.Orbit, Orbit, 8);
+
+            NBodyMode = msgData.NBodyMode;
+            Array.Copy(msgData.WorldPosition, WorldPosition, 3);
+            Array.Copy(msgData.WorldVelocity, WorldVelocity, 3);
         }
 
         public void CopyFrom(VesselPositionUpdate update)
@@ -126,6 +135,10 @@ namespace LmpClient.Systems.VesselPositionSys
             Array.Copy(update.VelocityVector, VelocityVector, 3);
             Array.Copy(update.NormalVector, NormalVector, 3);
             Array.Copy(update.Orbit, Orbit, 8);
+
+            NBodyMode = update.NBodyMode;
+            Array.Copy(update.WorldPosition, WorldPosition, 3);
+            Array.Copy(update.WorldVelocity, WorldVelocity, 3);
         }
 
         #endregion
