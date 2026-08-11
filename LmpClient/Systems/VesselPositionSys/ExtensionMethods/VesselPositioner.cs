@@ -54,8 +54,10 @@ namespace LmpClient.Systems.VesselPositionSys.ExtensionMethods
 
             // Keep KSP's own orbit roughly consistent so internal systems don't break. Principia (or any
             // N-body integrator) recomputes the real trajectory from the world state on its next tick.
+            // relPos is world position minus the body position (=> body-relative); relVel is the body-frame
+            // orbital velocity sent by the owner (same frame), so UpdateFromStateVectors stays consistent.
             var relPos = lerpedPos - lerpedBody.position;
-            var relVel = lerpedVel - lerpedBody.velocity;
+            var relVel = lerpedVel;
             if (vessel.orbit != null)
             {
                 vessel.orbit.UpdateFromStateVectors(relPos, relVel, lerpedBody, TimeSyncSystem.UniversalTime);
