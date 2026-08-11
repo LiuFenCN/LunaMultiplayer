@@ -144,7 +144,9 @@ namespace LmpClient.Systems.VesselPositionSys
             if (!vessel.packed && orbital && notLandedOrSplashed)
             {
                 msgData.NBodyMode = 1;
-                var wp = vessel.GetWorldPos3d();
+                var wp = vessel.GetWorldPos3D();
+                // obt_velocity is the orbital velocity in the main-body reference frame, which is exactly
+                // what the orbit.UpdateFromStateVectors() on the receiver expects (same frame as relPos).
                 var wv = vessel.obt_velocity;
                 msgData.WorldPosition[0] = wp.x;
                 msgData.WorldPosition[1] = wp.y;
