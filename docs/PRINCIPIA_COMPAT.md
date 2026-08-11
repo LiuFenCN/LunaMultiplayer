@@ -3,6 +3,20 @@
 > 分支：`feature/principia-compat`
 > 目标：让安装 Principia（N 体物理）以及 Kopernicus/OPM（自定义星系）的客户端能在 LMP 下联机。
 
+## 0. 实现状态（2026-08-11）
+
+- ✅ **阶段 A 代码已落地并推到本分支**（5 个文件）：
+  - `LmpCommon/Message/Data/Vessel/VesselPositionMsgData.cs` — 协议扩展：`NBodyMode` 字节 + `WorldPosition[3]`/`WorldVelocity[3]`（末尾追加、向后兼容，老消息可正常反序列化）。
+  - `LmpClient/Systems/VesselPositionSys/VesselPositionMessageSender.cs` — 发送端：off-rails 且在轨的飞船改发世界坐标（`vessel.GetWorldPos3d()` / `vessel.obt_velocity`）。
+  - `LmpClient/Systems/VesselPositionSys/VesselPositionUpdate.cs` — 接收端：拷贝 NBodyMode/World* 字段。
+  - `LmpClient/Systems/VesselPositionSys/ExtensionMethods/VesselPositioner.cs` — 应用端：`NBodyMode==1` 时走 `ApplyNBodyVesselPosition`，直接驱动世界变换、**不强制 on-rails**，让本地积分器接管。
+  - `LmpClient/Systems/VesselUpdateSys/VesselUpdate.cs` — 全量同步：off-rails 且在轨的船跳过 `orbitDriver` 强制 IDLE/UPDATE。
+- ⚠️ **未做（阶段 A 范围内故意留白）**：握手阶段的"全队 Principia 版本一致性检测"（目前靠"所有客户端都装同版本 Principia"的约定保证，未做代码强制）。阶段 B（warp）、阶段 C（健壮性/版本校验/重连校正）未做。
+- ⚠️ **编译与联机验证必须在用户真机完成**：见第 6 节。沙箱（本 AI 环境）只有 .NET 10 SDK，而 LmpClient 目标框架是 .NET Framework 4.7.2、且硬引用 KSP 的 `Assembly-CSharp.dll`/`UnityEngine.*.dll`（不进 git），**无法在沙箱编译或运行**。
+
+## 0.1 触发条件（实现细节）
+发送端用与接收端一致的启发式判定 N-body 船：`!vessel.packed && situation ∈ [ORBITING, ESCAPING] && !Landed && !Splashed`。即"off-rails 且在轨"的船走世界坐标同步。这是积分器无关的判定，Principia 的船天然命中；地面/水面船仍走原二体路径，不影响。
+
 ## 1. 当前为什么会崩（根因）
 
 LMP 的飞船同步是 **服务端权威的二体轨道模型**：
@@ -70,3 +84,33 @@ N 体下时间加速会放大积分漂移。方案：NBodyMode 下限制 warp �
 - 轨道模式事件：`LmpClient/Harmony/Vessel_GoOnRails.cs` / `Vessel_GoOffRails.cs`
 - 协议定义：`LmpCommon/Message/Data/Vessel/VesselPositionMsgData.cs`
 - 能力检测：`LmpClient/Systems/ModSys`（ModControl dll 列表）
+
+## 6. 编译与联机验证（必须在真机做）
+
+> LMP 是 KSP 游戏 mod，强依赖 KSP 程序集。**沙箱/CI 无法编译**，以下步骤在用户装有 KSP 的 Windows 上做。
+
+### 6.1 准备 KSP 程序集（一次性）
+LMP 仓库的 `LmpClient/LmpClient.csproj` 引用 `..\External\KSPLibraries\*.dll`（KSP 本体 DLL，不进 git）。需要把 KSP 的以下文件复制到仓库 `External\KSPLibraries\`：
+- `KSP_x64_Data\Managed\Assembly-CSharp.dll`
+- `KSP_x64_Data\Managed\UnityEngine*.dll`（CoreModule / PhysicsModule / UI / IMGUIModule / InputLegacyModule / AnimationModule / ImageConversionModule / TextRenderingModule / UnityWebRequestModule 等）
+- `KSP_x64_Data\Managed\System.dll`、`System.Xml.dll`
+外加 `External\Dependencies\Harmony\000_Harmony\0Harmony.dll`（LMP 自带或手动放置）。
+
+### 6.2 用 Visual Studio 编译
+1. 打开 `LunaMultiplayer.sln`（或分别编译 `LmpCommon` → `Lidgren.Net` → `LmpClient`）。
+2. 目标框架 **.NET Framework 4.7.2**，平台 **AnyCPU / x64**。
+3. 编译 `LmpClient`，产出 `LmpClient.dll` + 依赖。
+4. 把产物连同 `LmpCommon.dll`、`Lidgren.Net.dll` 复制到 KSP 的 `GameData\LunaMultiplayer\Plugins\` 覆盖（保留原 `LunaMultiplayer.dll` 入口）。
+
+### 6.3 联机自测（1x 实时）
+1. **全员**装同版本 Principia + 同版本 Kopernicus/OPM（朋友 mod 都是你发的，已满足）。
+2. 启动服务端（`Server.exe` 或 `LmpServerManager.exe`），客户端联机。
+3. 在 Principia 引力显著场景（近行星、转移轨道、多体共振区）驾驶飞船，让队友观察：
+   - ✅ 队友看到你的飞船沿 **N 体轨迹** 平滑移动，不跳变、不卡死 → Phase A 成功。
+   - ❌ 仍跳变/timeout：开 KSP.log 看 `[LMP]` / Principia 报错，多半是 `WorldPosition`/`obt_velocity` 取法或 `SetVesselWorldPositionAndRotation` 的 transform 偏移问题，回到 `VesselPositioner.cs` 调。
+4. warp>1 时预期会漂移（阶段 B 未做），先只用 1x 验证。
+
+### 6.4 已知待调点（真机联调时最可能踩）
+- 世界速度取法：`vessel.obt_velocity` 是相对 SOI 体的世界速度，对 N 体绝对坐标基本可用；若发现队友飞船有系统性速度偏差，改取 `vessel.srf_velocity + mainBody.velocity`（同源到世界系）。
+- `UpdateFromStateVectors(relPos, relVel, body, UT)` 仅用于让 KSP 内部系统（CommNet/情况）不崩，Principia 下一 tick 会覆盖；若冲突，可整段跳过（仅设 transform）。
+- 多体参考系：NBodyMode 船的 `BodyIndex` 仍取 `referenceBody.flightGlobalsIndex`，用于 `relPos` 计算；若 Principia 把参考系换到 barycenter，需相应调整。
