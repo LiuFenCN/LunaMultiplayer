@@ -1,4 +1,4 @@
-﻿using KSP.UI.Screens;
+using KSP.UI.Screens;
 using LmpClient.VesselUtilities;
 using System;
 
@@ -48,7 +48,13 @@ namespace LmpClient.Systems.VesselUpdateSys
             UpdateVesselFields(vessel);
             UpdateProtoVesselValues(vessel.protoVessel);
 
-            if (vessel.orbitDriver && !vessel.loaded)
+            // N-body (Principia / non-Keplerian) vessels are off-rails and integrated by a local propagator.
+            // Do NOT force the orbit driver into IDLE/UPDATE for them — that would re-impose a Keplerian
+            // orbit and break the N-body trajectory. We only touch the orbit driver for normal vessels.
+            var nBody = !vessel.packed && vessel.situation >= Vessel.Situations.ORBITING &&
+                        vessel.situation <= Vessel.Situations.ESCAPING && !vessel.Landed && !vessel.Splashed;
+
+            if (!nBody && vessel.orbitDriver && !vessel.loaded)
             {
                 if (vessel.situation < Vessel.Situations.FLYING && vessel.orbitDriver.updateMode != OrbitDriver.UpdateMode.IDLE)
                 {
