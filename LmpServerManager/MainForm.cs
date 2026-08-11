@@ -255,7 +255,7 @@ namespace LmpServerManager
             if (!File.Exists(f)) return "-";
             try
             {
-                var doc = new XmlDocument(); doc.Load(f);
+                var doc = LoadXmlSafe(f);
                 var n = doc.SelectSingleNode("//Port") ?? doc.SelectSingleNode("//*[local-name()='Port']");
                 return n?.InnerText ?? "-";
             }
@@ -299,7 +299,7 @@ namespace LmpServerManager
             if (!File.Exists(f)) { chkAllowNonListed.Checked = false; return; }
             try
             {
-                var doc = new XmlDocument(); doc.Load(f);
+                var doc = LoadXmlSafe(f);
                 var allow = doc.SelectSingleNode("//*[local-name()='AllowNonListedPlugins']");
                 chkAllowNonListed.Checked = allow != null && allow.InnerText.Trim().ToLower() == "true";
                 var files = doc.SelectNodes("//*[local-name()='OptionalPlugins']/*[local-name()='DllFile']");
@@ -332,7 +332,7 @@ namespace LmpServerManager
             if (!File.Exists(f)) { MessageBox.Show("未找到 LMPModControl.xml", "错误", MessageBoxButtons.OK, MessageBoxIcon.Error); return; }
             try
             {
-                var doc = new XmlDocument(); doc.Load(f);
+                var doc = LoadXmlSafe(f);
                 var allow = doc.SelectSingleNode("//*[local-name()='AllowNonListedPlugins']");
                 if (allow != null) allow.InnerText = chkAllowNonListed.Checked ? "true" : "false";
                 var opt = doc.SelectSingleNode("//*[local-name()='OptionalPlugins']");
@@ -383,6 +383,25 @@ namespace LmpServerManager
         }
 
         // ---------- 编码安全的读写 (LMP 配置声明 utf-16 实际 utf-8) ----------
+        private static XmlDocument LoadXmlSafe(string path)
+        {
+            var (text, _) = ReadDetect(path);
+            if (text.StartsWith("<?xml", StringComparison.OrdinalIgnoreCase))
+            {
+                int end = text.IndexOf("?>");
+                if (end > 0)
+                {
+                    var decl = text.Substring(0, end + 2);
+                    decl = decl.Replace("encoding=\"utf-16\"", "encoding=\"utf-8\"", StringComparison.OrdinalIgnoreCase)
+                               .Replace("encoding='utf-16'", "encoding='utf-8'", StringComparison.OrdinalIgnoreCase);
+                    text = decl + text.Substring(end + 2);
+                }
+            }
+            var doc = new XmlDocument();
+            doc.LoadXml(text);
+            return doc;
+        }
+
         private static (string text, Encoding enc) ReadDetect(string path)
         {
             byte[] bytes = File.ReadAllBytes(path);
