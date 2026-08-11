@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <AssemblyName>LmpServerManager</AssemblyName>
+    <RootNamespace>LmpServerManager</RootNamespace>
+    <AssemblyTitle>LMP 服务端管理器</AssemblyTitle>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <Description>LunaMultiplayer 专用服务端原生窗口管理工具</Description>
+  </PropertyGroup>
+</Project>
